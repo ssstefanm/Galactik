@@ -3,9 +3,17 @@ session_start();
 include("connection.php");
 include("functions.php");
 require_once("track_visits.php");
+require_once __DIR__ . '/PHPMailer/Exception.php';
+require_once __DIR__ . '/PHPMailer/PHPMailer.php';
+require_once __DIR__ . '/PHPMailer/SMTP.php';
+require_once 'email_config.php';
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+use PHPMailer\PHPMailer\SMTP;
 
 $user_data = check_login($con);
-$db = new PDO('mysql:host=-;dbname=-', '-', '-');
+$db = new PDO('mysql:host=sql108.infinityfree.com;dbname=if0_37686894_planetar', 'if0_37686894', 'JXrWoYo3qo0Q');
 $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 function sanitize($input) {
@@ -375,6 +383,11 @@ track_page_visit($db, $page, $user_data);
     </style>
 </head>
 <body>
+    <!-- Video Background -->
+    <video autoplay loop muted playsinline class="video-background">
+        <source src="lightning.mov" type="video/quicktime">
+        Your browser does not support the video tag.
+    </video>
 
     <div class="content-overlay">
         <header>
@@ -652,39 +665,102 @@ track_page_visit($db, $page, $user_data);
             <?php break; ?>
             
             <?php case 'contact': ?>
-                <div class="content-section">
-                    <h2>Contact Us</h2>
-                    <?php
-                    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-                        $name = sanitize($_POST['name']);
-                        $email = sanitize($_POST['email']);
-                        $message = sanitize($_POST['message']);
-                        
-                        $stmt = $db->prepare("INSERT INTO contact_messages (name, email, message) VALUES (?, ?, ?)");
-                        $stmt->execute([$name, $email, $message]);
-                        
-                        echo "<p class='success-message'>Thank you for your message. We'll get back to you soon!</p>";
-                    }
-                    ?>
-                    <form class="contact-form" method="POST">
-                        <div>
-                            <label for="name">Name:</label>
-                            <input type="text" id="name" name="name" required>
+    <div class="content-section">
+        <h2>Contact Us</h2>
+        <?php
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $name = sanitize($_POST['name']);
+            $email = sanitize($_POST['email']);
+            $message = sanitize($_POST['message']);
+            
+            try {
+                // Save to database
+                $stmt = $db->prepare("INSERT INTO contact_messages (name, email, message) VALUES (?, ?, ?)");
+                $stmt->execute([$name, $email, $message]);
+                
+                // Send confirmation email to user
+                $mail = new PHPMailer(true);
+                
+                // Server settings
+                $mail->SMTPDebug = 0;
+                $mail->isSMTP();
+                $mail->Host = SMTP_HOST;
+                $mail->SMTPAuth = true;
+                $mail->Username = SMTP_USERNAME;
+                $mail->Password = SMTP_PASSWORD;
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                $mail->Port = SMTP_PORT;
+
+                // Send confirmation to user
+                $mail->setFrom('galactiklabel@gmail.com', 'Galactik Label');
+                $mail->addAddress($email, $name);
+                
+                $mail->isHTML(true);
+                $mail->Subject = 'Message Received - Galactik Label';
+                $mail->Body = "
+                    <html>
+                    <body style='font-family: Arial, sans-serif; color: white; background: #111;'>
+                        <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
+                            <h2>Thank you for contacting us!</h2>
+                            <p>Dear {$name},</p>
+                            <p>We have received your message and will get back to you shortly.</p>
+                            <p>Your message:</p>
+                            <div style='background: rgba(255,255,255,0.1); padding: 15px; border-radius: 5px; margin: 15px 0;'>
+                                {$message}
+                            </div>
+                            <p>Best regards,<br>Galactik Label Team</p>
                         </div>
-                        
-                        <div>
-                            <label for="email">Email:</label>
-                            <input type="email" id="email" name="email" required>
+                    </body>
+                    </html>";
+
+                $mail->send();
+                
+                // Send notification to admin
+                $mail->clearAddresses();
+                $mail->addAddress('galactiklabel@gmail.com', 'Galactik Admin');
+                $mail->Subject = 'New Contact Form Submission';
+                $mail->Body = "
+                    <html>
+                    <body style='font-family: Arial, sans-serif; color: white; background: #111;'>
+                        <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
+                            <h2>New Contact Form Submission</h2>
+                            <p><strong>From:</strong> {$name} ({$email})</p>
+                            <p><strong>Message:</strong></p>
+                            <div style='background: rgba(255,255,255,0.1); padding: 15px; border-radius: 5px; margin: 15px 0;'>
+                                {$message}
+                            </div>
                         </div>
-                        
-                        <div>
-                            <label for="message">Message:</label>
-                            <textarea id="message" name="message" rows="5" required></textarea>
-                        </div>
-                        
-                        <button type="submit" class="btn">Send Message</button>
-                    </form>
-                </div>
+                    </body>
+                    </html>";
+
+                $mail->send();
+                
+                echo "<p class='success-message'>Thank you for your message. We have sent a confirmation to your email.</p>";
+            } catch (Exception $e) {
+                echo "<p class='error-message'>There was an error sending your message. Please try again later.</p>";
+                error_log("Mail error: " . $e->getMessage());
+            }
+        }
+        ?>
+        <form class="contact-form" method="POST">
+            <div>
+                <label for="name">Name:</label>
+                <input type="text" id="name" name="name" required>
+            </div>
+            
+            <div>
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+            
+            <div>
+                <label for="message">Message:</label>
+                <textarea id="message" name="message" rows="5" required></textarea>
+            </div>
+            
+            <button type="submit" class="btn">Send Message</button>
+        </form>
+    </div>
             <?php break; ?>
             
             <?php case 'orders': 
